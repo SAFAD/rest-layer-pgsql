@@ -1,10 +1,6 @@
 language: go
 go:
 - 1.7
-- tip
-env:
-  allow_failures:
-    - go: tip
 services:
   - postgresql
 before_script:
