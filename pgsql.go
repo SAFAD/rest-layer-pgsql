@@ -260,6 +260,7 @@ func getInsert(h *Handler, i *resource.Item) (string, error) {
 
 	a := fmt.Sprintf("INSERT INTO %s(etag,", h.tableName)
 	z := fmt.Sprintf("VALUES(%s,", "'"+i.ETag+"'")
+
 	for k, v := range i.Payload {
 		var val string
 		a += k + ","
@@ -282,27 +283,16 @@ func getInsert(h *Handler, i *resource.Item) (string, error) {
 
 // getUpdate returns a SQL INSERT statement constructed from the Item data
 func getUpdate(h *Handler, i *resource.Item, o *resource.Item) (string, error) {
-	var id, oEtag, iEtag, upd string
+	var id string
 	var err error
 
 	id, err = valueToString(o.ID)
 	if err != nil {
 		return "", resource.ErrNotImplemented
 	}
-	oEtag, err = valueToString(o.ETag)
-	if err != nil {
-		return "", resource.ErrNotImplemented
-	}
-	iEtag, err = valueToString(i.ETag)
-	if err != nil {
-		return "", resource.ErrNotImplemented
-	}
-	upd, err = valueToString(i.Updated)
-	if err != nil {
-		return "", resource.ErrNotImplemented
-	}
-	a := fmt.Sprintf("UPDATE OR ROLLBACK %s SET etag=%s,updated=%s,", h.tableName, iEtag, upd)
-	z := fmt.Sprintf("WHERE id=%s AND etag=%s;", id, oEtag)
+
+	a := fmt.Sprintf("UPDATE %s SET etag=%s,", h.tableName, "'"+i.ETag+"'")
+	z := fmt.Sprintf("WHERE id=%s AND etag=%s;", id, "'"+o.ETag+"'")
 	for k, v := range i.Payload {
 		if k != "id" {
 			var val string
@@ -327,13 +317,34 @@ func newItemList(rows []map[string]interface{}, offset int) (*resource.ItemList,
 	items := make([]*resource.Item, len(rows))
 	l := &resource.ItemList{Offset: offset, Total: len(rows), Items: items}
 	for i, r := range rows {
-		item, err := resource.NewItem(r)
+		item, err := newItem(r)
 		if err != nil {
 			return nil, err
 		}
 		items[i] = item
 	}
 	return l, nil
+}
+
+// newItem creates resource.Item from a SQL result row
+func newItem(row map[string]interface{}) (*resource.Item, error) {
+	// Add the id back (we use the same map hoping the mongoItem won't be stored back)
+	id := row["id"]
+	etag := row["etag"]
+	updated := row["updated"]
+	delete(row, "etag")
+	delete(row, "updated")
+
+	tu, err := time.Parse(time.RFC3339, updated.(string))
+	if err != nil {
+		return nil, err
+	}
+	return &resource.Item{
+		ID:      id,
+		ETag:    etag.(string),
+		Updated: tu,
+		Payload: row,
+	}, nil
 }
 
 func compareEtags(h *Handler, id, origEtag interface{}) error {
