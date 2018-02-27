@@ -89,7 +89,12 @@ func (h Handler) Find(ctx context.Context, q *query.Query) (*resource.ItemList, 
 	}
 
 	// return a *resource.ItemList or an error
-	return newItemList(raw, q.Window.Offset)
+	// also check if Window is set at all otherwise use 0 as offset
+	var offset int
+	if q.Window != nil {
+		offset = q.Window.Offset
+	}
+	return newItemList(raw, offset)
 }
 
 // Insert stores new items in the backend store. If any of the items already exist,
@@ -230,8 +235,7 @@ func getSelect(h Handler, q *query.Query) (string, error) {
 	if q.Sort != nil {
 		str += " ORDER BY " + getSort(q)
 	}
-
-	if q.Window.Limit >= 0 {
+	if q.Window != nil && q.Window.Limit >= 0 {
 		str += fmt.Sprintf(" LIMIT %d", q.Window.Limit)
 		str += fmt.Sprintf(" OFFSET %d", q.Window.Offset)
 	}
@@ -262,6 +266,9 @@ func getInsert(h *Handler, i *resource.Item) (string, error) {
 		val, err = valueToString(v)
 		if err != nil {
 			return "", resource.ErrNotImplemented
+		}
+		if k == "created" || k == "updated" {
+			val = "'" + time.Now().Format(time.RFC3339) + "'"
 		}
 		z += val + ","
 	}
@@ -320,41 +327,13 @@ func newItemList(rows []map[string]interface{}, offset int) (*resource.ItemList,
 	items := make([]*resource.Item, len(rows))
 	l := &resource.ItemList{Offset: offset, Total: len(rows), Items: items}
 	for i, r := range rows {
-		item, err := newItem(r)
+		item, err := resource.NewItem(r)
 		if err != nil {
 			return nil, err
 		}
 		items[i] = item
 	}
 	return l, nil
-}
-
-// newItem creates resource.Item from a SQL result row
-func newItem(row map[string]interface{}) (*resource.Item, error) {
-	// Add the id back (we use the same map hoping the mongoItem won't be stored back)
-	id := row["id"]
-	etag := row["etag"]
-	created := row["created"]
-	updated := row["updated"]
-	delete(row, "etag")
-	delete(row, "updated")
-
-	ct, err := time.Parse("2006-01-02 15:04:05.99999999 -0700 MST", created.(string))
-	if err != nil {
-		return nil, err
-	}
-	row["created"] = ct
-
-	tu, err := time.Parse("2006-01-02 15:04:05.99999999 -0700 MST", updated.(string))
-	if err != nil {
-		return nil, err
-	}
-	return &resource.Item{
-		ID:      id,
-		ETag:    etag.(string),
-		Updated: tu,
-		Payload: row,
-	}, nil
 }
 
 func compareEtags(h *Handler, id, origEtag interface{}) error {
