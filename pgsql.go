@@ -254,8 +254,8 @@ func getDelete(h Handler, q *query.Query) (string, error) {
 func getInsert(h *Handler, i *resource.Item) (string, error) {
 	var err error
 
-	a := fmt.Sprintf("INSERT INTO %s(etag,updated,", h.tableName)
-	z := fmt.Sprintf("VALUES(%s,%s,", i.ETag, i.Updated.String())
+	a := fmt.Sprintf("INSERT INTO %s(etag,", h.tableName)
+	z := fmt.Sprintf("VALUES(%s,", "'"+i.ETag+"'")
 	for k, v := range i.Payload {
 		var val string
 		a += k + ","
