@@ -1,6 +1,6 @@
 # REST Layer PostgreSQL Backend
 
-[![godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/safad/rest-layer-pgsql) [![license](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/safad/rest-layer-pgsql/master/LICENSE)[![build](https://img.shields.io/travis/rs/rest-layer-pgsql.svg?style=flat)](https://travis-ci.org/rs/rest-layer-pgsql)[![Go Report Card](https://goreportcard.com/badge/github.com/SAFAD/rest-layer-pgsql)](https://goreportcard.com/report/github.com/SAFAD/rest-layer-pgsql)
+[![godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/safad/rest-layer-pgsql) [![license](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/safad/rest-layer-pgsql/master/LICENSE) [![build](https://img.shields.io/travis/safad/rest-layer-pgsql.svg?style=flat)](https://travis-ci.org/safad/rest-layer-pgsql) [![Go Report Card](https://goreportcard.com/badge/github.com/SAFAD/rest-layer-pgsql)](https://goreportcard.com/report/github.com/SAFAD/rest-layer-pgsql)
 
 This [REST Layer](https://github.com/rs/rest-layer) resource storage backend stores data in a PostgreSQL Database using [database/sql](https://godoc.org/database/sql) and [pq](https://github.com/lib/pq).
 
