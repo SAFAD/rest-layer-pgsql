@@ -9,7 +9,7 @@ import (
 	"github.com/rs/rest-layer/resource"
 	"github.com/rs/rest-layer/rest"
 	"github.com/rs/rest-layer/schema"
-	pgsql "github.com/safad/rest-layer-pgsql"
+	"github.com/safad/rest-layer-pgsql"
 )
 
 var (
