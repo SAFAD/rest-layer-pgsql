@@ -92,6 +92,131 @@ func (h Handler) Find(ctx context.Context, q *query.Query) (*resource.ItemList, 
 	return newItemList(raw, q.Window.Offset)
 }
 
+// Insert stores new items in the backend store. If any of the items already exist,
+// no item should be inserted and a resource.ErrConflict must be returned. The insertion
+// of the items is performed atomically.
+func (h *Handler) Insert(ctx context.Context, items []*resource.Item) error {
+
+	// begin a database transaction
+	txPtr, err := h.session.Begin()
+	if err != nil {
+		return err
+	}
+
+	// construct and execute an insert statement for each item provided.  If anything
+	// fails, rollback the transaction and return.
+	for _, i := range items {
+		s, err := getInsert(h, i)
+		if err != nil {
+			txPtr.Rollback()
+			return err
+		}
+		_, err = h.session.Exec(s)
+		if err != nil {
+			txPtr.Rollback()
+			return err
+		}
+	}
+	// inserts all succeeded, commit the transaction.
+	txPtr.Commit()
+	return nil
+}
+
+// Update replaces an item in the backend store with a new version. If the original
+// item is not found, a resource.ErrNotFound is returned. If the etags don't match, a
+// resource.ErrConflict is returned.
+func (h *Handler) Update(ctx context.Context, item *resource.Item, original *resource.Item) error {
+
+	// begin a database transaction
+	txPtr, err := h.session.Begin()
+	if err != nil {
+		return err
+	}
+
+	err = compareEtags(h, original.ID, original.ETag)
+	if err != nil {
+		txPtr.Rollback()
+		return err
+	}
+
+	s, err := getUpdate(h, item, original)
+	if err != nil {
+		txPtr.Rollback()
+		return err
+	}
+	_, err = h.session.Exec(s)
+	if err != nil {
+		txPtr.Rollback()
+		return err
+	}
+
+	// update succeeded, commit the transaction.
+	txPtr.Commit()
+	return nil
+}
+
+// Delete deletes the provided item by its ID. The Etag of the item stored in the
+// backend store must match the Etag of the provided item or a resource.ErrConflict
+// must be returned. This check should be performed atomically.
+//
+// If the provided item were not present in the backend store, a resource.ErrNotFound
+// must be returned.
+//
+// If the removal of the data is not immediate, the method must listen for cancellation
+// on the passed ctx. If the operation is stopped due to context cancellation, the
+// function must return the result of the ctx.Err() method.
+func (h *Handler) Delete(ctx context.Context, item *resource.Item) error {
+
+	// begin a transaction
+	txPtr, err := h.session.Begin()
+	if err != nil {
+		return err
+	}
+
+	err = compareEtags(h, item.ID, item.ETag)
+	if err != nil {
+		txPtr.Rollback()
+		return err
+	}
+
+	// prepare and execute the delete statement, then finish the transaction
+	s := fmt.Sprintf("DELETE FROM %s WHERE id = '%s'", h.tableName, item.ID)
+	stmt, err := h.session.Prepare(s)
+	if err != nil {
+		txPtr.Rollback()
+		return err
+	}
+
+	_, err = stmt.Exec()
+	if err != nil {
+		txPtr.Rollback()
+		return err
+	}
+
+	txPtr.Commit()
+	return nil
+}
+
+// Clear removes all items matching the lookup and returns the number of items
+// removed as the first value.  If a query operation is not implemented
+// by the storage handler, a resource.ErrNotImplemented is returned.
+func (h Handler) Clear(ctx context.Context, q *query.Query) (int, error) {
+	// construct the delete statement from the lookup data
+	s, err := getDelete(h, q)
+	if err != nil {
+		return -1, err // should only be ErrNotImplemented
+	}
+	result, err := h.session.Exec(s)
+	if err != nil {
+		return -1, err
+	}
+	ra, err := result.RowsAffected()
+	if err != nil {
+		return -1, nil
+	}
+	return int(ra), nil
+}
+
 // getSelect returns a SQL SELECT statement that represents the Lookup data
 func getSelect(h Handler, q *query.Query) (string, error) {
 	str := "SELECT * FROM " + h.tableName
@@ -115,7 +240,7 @@ func getSelect(h Handler, q *query.Query) (string, error) {
 }
 
 // getDelete returns a SQL DELETE statement that represents the Lookup data
-func getDelete(h *Handler, q *query.Query) (string, error) {
+func getDelete(h Handler, q *query.Query) (string, error) {
 	str := "DELETE FROM " + h.tableName + " WHERE "
 	qry, err := getQuery(q)
 	if err != nil {
