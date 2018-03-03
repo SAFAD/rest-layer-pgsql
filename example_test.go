@@ -104,12 +104,12 @@ func Example() {
 func setupDB(db *sql.DB) {
 	var err error
 	// create users table
-	_, err = db.Exec("CREATE TABLE `users` (`id` VARCHAR(128) PRIMARY KEY,`etag` VARCHAR(128),`updated` VARCHAR(128),`created` VARCHAR(128), `name` VARCHAR(150));")
+	_, err = db.Exec("CREATE TABLE users (id character varying(128) NOT NULL, etag character varying(128), updated character varying(128), created character varying(128), name character varying(150), CONSTRAINT users_pkey PRIMARY KEY (id));")
 	if err != nil {
 		log.Fatal(err)
 	}
 	// create posts table
-	_, err = db.Exec("CREATE TABLE `posts` (`id` VARCHAR(128) PRIMARY KEY,`etag` VARCHAR(128),`updated` VARCHAR(128), `created` VARCHAR(128), `user` VARCHAR(128) REFERENCES users(id) ON DELETE CASCADE, `public` INTEGER, `title` VARCHAR(150), `body` VARCHAR(100000));")
+	_, err = db.Exec("CREATE TABLE posts (id character varying(128) NOT NULL, etag character varying(128), updated character varying(128), created character varying(128), \"user\" character varying(128), public integer title character varying(150), body character varying(100000), CONSTRAINT posts_pkey PRIMARY KEY (id), CONSTRAINT posts_user_fkey FOREIGN KEY (\"user\") REFERENCES users (id) MATCH SIMPLE ON UPDATE NO ACTION ON DELETE CASCADE);")
 	if err != nil {
 		log.Fatal(err)
 	}
