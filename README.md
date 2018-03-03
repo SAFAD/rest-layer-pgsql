@@ -4,7 +4,7 @@
 
 This [REST Layer](https://github.com/rs/rest-layer) resource storage backend stores data in a PostgreSQL Database using [database/sql](https://godoc.org/database/sql) and [pq](https://github.com/lib/pq).
 
-# UNDER HEAVY DEVELOPMENT BEWARE TO NOT BE USED ONLY UNDER HEAVY TESTING
+## UNDER HEAVY DEVELOPMENT BEWARE TO NOT BE USED ONLY UNDER HEAVY TESTING
 
 ## Usage
 
@@ -36,5 +36,3 @@ Use this handler with a resource:
 ```go
 index.Bind("users", users, users_handler, resource.DefaultConf)
 ```
-
-You may want to create a many pgsql handlers as you have resources as long as you want each resources in a different collection. You can share the same `pq` db connection across all you handlers.

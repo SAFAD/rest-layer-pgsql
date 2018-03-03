@@ -268,6 +268,8 @@ func getInsert(h *Handler, i *resource.Item) (string, error) {
 		if err != nil {
 			return "", resource.ErrNotImplemented
 		}
+		// the mother of all cheap hacks, explained in the getUpdate() function
+		// TODO: FIXME!
 		if k == "created" || k == "updated" {
 			val = "'" + time.Now().Format(time.RFC3339) + "'"
 		}
@@ -299,6 +301,14 @@ func getUpdate(h *Handler, i *resource.Item, o *resource.Item) (string, error) {
 			val, err = valueToString(v)
 			if err != nil {
 				return "", resource.ErrNotImplemented
+			}
+			//another cheap hack of the cheapest hacks ever hacked in the history of cheapness
+			//but seriously why is time.Time type returns this incompatible format?
+			//example: 2018-02-27 23:07:44.4179416 +0100 CET m=+7.679574500
+			//the m=+7.679574500 appears from nowhere and is unparsable or formattable
+			//TODO: FIXME!
+			if k == "updated" {
+				val = "'" + time.Now().Format(time.RFC3339) + "'"
 			}
 			a += fmt.Sprintf("%s=%s,", k, val)
 		}
