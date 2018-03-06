@@ -9,13 +9,13 @@ import (
 	"github.com/rs/rest-layer/schema/query"
 )
 
-// getQuery transform a query into a Mongo query
+// getQuery transform a query into an SQL compliant query
 func getQuery(q *query.Query) (string, error) {
 	return translatePredicate(q.Predicate)
 }
 
-// getSort transform a resource.Lookup into a Mongo sort list.
-// If the sort list is empty, fallback to _id.
+// getSort transform a query.Query into an SQL compliant SORT.
+// If the sort list is empty, fallback to id.
 func getSort(q *query.Query) string {
 	l := q.Sort
 	var str string
@@ -158,7 +158,8 @@ func valueToString(v query.Value) (string, error) {
 	case time.Time:
 		str += fmt.Sprintf("'%v'", i)
 	default:
-		return "", resource.ErrNotImplemented
+		str += fmt.Sprintf("'%v'", i)
+		//return "", resource.ErrNotImplemented
 	}
 	return str, nil
 }

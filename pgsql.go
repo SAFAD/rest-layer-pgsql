@@ -341,11 +341,10 @@ func newItem(row map[string]interface{}) (*resource.Item, error) {
 	// Add the id back (we use the same map hoping the mongoItem won't be stored back)
 	id := row["id"]
 	etag := row["etag"]
-	updated := row["updated"]
 	delete(row, "etag")
 	delete(row, "updated")
 
-	tu, err := time.Parse(time.RFC3339, updated.(string))
+	tu, err := time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}
