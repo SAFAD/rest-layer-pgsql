@@ -416,10 +416,17 @@ func newItem(row map[string]interface{}) (*resource.Item, error) {
 func compareEtags(h *Handler, id, origEtag interface{}) error {
 	// query for record with the same id, and return ErrNotFound if we don't find one.
 	var etag string
-	var err error
-	err = h.session.QueryRow(
-		fmt.Sprintf("SELECT etag FROM %s WHERE id='%v'", h.tableName, id)).Scan(&etag)
+	//create a pointer
+	transactionPtr, err := h.session.Begin()
 	if err != nil {
+		return err
+	}
+
+	transactionPtr.QueryRow("SELECT etag FROM $1 WHERE id='$2'", h.tableName, id).Scan(&etag)
+
+	err = transactionPtr.Commit()
+	if err != nil {
+		transactionPtr.Rollback()
 		return err
 	}
 
