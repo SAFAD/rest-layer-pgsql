@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 	//Must be annonymously imported so that we can not use its functions
 	_ "github.com/lib/pq"
@@ -258,7 +259,7 @@ func insertItems(h *Handler, items []*sqlItem) error {
 		// third we prepare the statement
 		statement.WriteString("INSERT INTO " + h.tableName)
 		columns.WriteString("(etag, ")
-		rows.WriteString("VALUES(" + i.ETag + ", ")
+		rows.WriteString("VALUES('" + i.ETag + "', ")
 
 		for key, value := range i.Payload {
 			//now we prepare the columns and rows
@@ -288,6 +289,13 @@ func insertItems(h *Handler, items []*sqlItem) error {
 		var ID int
 		err = transactionPtr.QueryRow(query).Scan(&ID)
 		if err != nil {
+			//now we check if the error is because of duplicate key
+			errorString := fmt.Sprintln(err)
+			if strings.Contains(errorString, "pq: duplicate key value violates unique constraint") {
+				// duplicate key error
+				transactionPtr.Rollback()
+				return resource.ErrConflict
+			}
 			transactionPtr.Rollback()
 			return err
 		}
