@@ -2,6 +2,7 @@
 package pgsql
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -23,6 +24,31 @@ func NewHandler(s *sql.DB, tableName string) *Handler {
 	return &Handler{
 		session:   s,
 		tableName: tableName,
+	}
+}
+
+// sqlItem is a bson representation of a resource.Item
+type sqlItem struct {
+	ID      interface{}
+	ETag    string
+	Updated time.Time
+	Payload map[string]interface{}
+}
+
+// newsqlItem converts a resource.Item into a sqlItem
+func newSQLItem(i *resource.Item) *sqlItem {
+	// Filter out id from the payload so we don't store it at all
+	p := map[string]interface{}{}
+	for k, v := range i.Payload {
+		if k != "id" {
+			p[k] = v
+		}
+	}
+	return &sqlItem{
+		ID:      i.ID,
+		ETag:    i.ETag,
+		Updated: i.Updated,
+		Payload: p,
 	}
 }
 
@@ -99,32 +125,23 @@ func (h Handler) Find(ctx context.Context, q *query.Query) (*resource.ItemList, 
 
 // Insert stores new items in the backend store. If any of the items already exist,
 // no item should be inserted and a resource.ErrConflict must be returned. The insertion
-// of the items is performed atomically.
+// of the items is performed automatically.
+// TODO: add checking for resource.ErrConflict error.
 func (h *Handler) Insert(ctx context.Context, items []*resource.Item) error {
+	pItems := make([]*sqlItem, len(items))
+	for i, item := range items {
+		pItems[i] = newSQLItem(item)
+	}
 
-	// begin a database transaction
-	txPtr, err := h.session.Begin()
+	err := insertItems(h, pItems)
 	if err != nil {
 		return err
 	}
 
-	// construct and execute an insert statement for each item provided.  If anything
-	// fails, rollback the transaction and return.
-	for _, i := range items {
-		s, err := getInsert(h, i)
-		if err != nil {
-			txPtr.Rollback()
-			return err
-		}
-		_, err = h.session.Exec(s)
-		if err != nil {
-			txPtr.Rollback()
-			return err
-		}
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
-	// inserts all succeeded, commit the transaction.
-	txPtr.Commit()
-	return nil
+	return err
 }
 
 // Update replaces an item in the backend store with a new version. If the original
@@ -222,65 +239,65 @@ func (h Handler) Clear(ctx context.Context, q *query.Query) (int, error) {
 	return int(ra), nil
 }
 
-// getSelect returns a SQL SELECT statement that represents the Lookup data
-func getSelect(h Handler, q *query.Query) (string, error) {
-	str := "SELECT * FROM " + h.tableName
-	qry, err := getQuery(q)
-	if err != nil {
-		return "", err
-	}
-	if qry != "" {
-		str += " WHERE " + qry
-	}
-	if q.Sort != nil {
-		str += " ORDER BY " + getSort(q)
-	}
-	if q.Window != nil && q.Window.Limit >= 0 {
-		str += fmt.Sprintf(" LIMIT %d", q.Window.Limit)
-		str += fmt.Sprintf(" OFFSET %d", q.Window.Offset)
-	}
-	str += ";"
-	return str, nil
-}
-
-// getDelete returns a SQL DELETE statement that represents the Lookup data
-func getDelete(h Handler, q *query.Query) (string, error) {
-	str := "DELETE FROM " + h.tableName + " WHERE "
-	qry, err := getQuery(q)
-	if err != nil {
-		return "", err
-	}
-	str += qry + ";"
-	return str, nil
-}
-
-// getInsert returns a SQL INSERT statement constructed from the Item data
-func getInsert(h *Handler, i *resource.Item) (string, error) {
-	var err error
-
-	a := fmt.Sprintf("INSERT INTO %s(etag,", h.tableName)
-	z := fmt.Sprintf("VALUES(%s,", "'"+i.ETag+"'")
-
-	for k, v := range i.Payload {
-		var val string
-		a += k + ","
-		val, err = valueToString(v)
+// insertItems inserts statements in Bulk
+func insertItems(h *Handler, items []*sqlItem) error {
+	//first we roll over the items
+	for _, i := range items {
+		var statement bytes.Buffer
+		var columns bytes.Buffer
+		var rows bytes.Buffer
+		// second we create a transaction pointer to make sure all our is in safe environment
+		transactionPtr, err := h.session.Begin()
 		if err != nil {
-			return "", resource.ErrNotImplemented
+			// if the transaction fails, return error
+			return err
 		}
-		// the mother of all cheap hacks, explained in the getUpdate() function
-		// TODO: FIXME!
-		if k == "created" || k == "updated" {
-			val = "'" + time.Now().Format(time.RFC3339) + "'"
-		}
-		z += val + ","
-	}
-	// remove trailing commas
-	a = a[:len(a)-1] + ")"
-	z = z[:len(z)-1] + ")"
+		//defer closing the connection
+		defer h.session.Close()
 
-	result := fmt.Sprintf("%s %s;", a, z)
-	return result, nil
+		// third we prepare the statement
+		statement.WriteString("INSERT INTO " + h.tableName)
+		columns.WriteString("(etag, ")
+		rows.WriteString("VALUES(" + i.ETag + ", ")
+
+		for key, value := range i.Payload {
+			//now we prepare the columns and rows
+			columns.WriteString(key + ", ")
+			v, err := valueToString(value)
+			if err != nil {
+				return err
+			}
+			rows.WriteString(v + ", ")
+		}
+		//now we remove trailing commas
+		cString := columns.String()
+		cString = cString[:len(cString)-2] + ")"
+		var fColumns bytes.Buffer
+		fColumns.WriteString(cString)
+
+		rString := rows.String()
+		rString = rString[:len(rString)-2] + ") RETURNING id"
+		var fRows bytes.Buffer
+		fRows.WriteString(rString)
+
+		statement.WriteString(fColumns.String())
+		statement.WriteString(fRows.String())
+
+		// all good now commit!
+		query := statement.String()
+		var ID int
+		err = transactionPtr.QueryRow(query).Scan(&ID)
+		if err != nil {
+			transactionPtr.Rollback()
+			return err
+		}
+		// all good! commit the query
+		err = transactionPtr.Commit()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // getUpdate returns a SQL INSERT statement constructed from the Item data
@@ -321,6 +338,38 @@ func getUpdate(h *Handler, i *resource.Item, o *resource.Item) (string, error) {
 	return result, nil
 }
 
+// getSelect returns a SQL SELECT statement that represents the Lookup data
+func getSelect(h Handler, q *query.Query) (string, error) {
+	str := "SELECT * FROM " + h.tableName
+	qry, err := getQuery(q)
+	if err != nil {
+		return "", err
+	}
+	if qry != "" {
+		str += " WHERE " + qry
+	}
+	if q.Sort != nil {
+		str += " ORDER BY " + getSort(q)
+	}
+	if q.Window != nil && q.Window.Limit >= 0 {
+		str += fmt.Sprintf(" LIMIT %d", q.Window.Limit)
+		str += fmt.Sprintf(" OFFSET %d", q.Window.Offset)
+	}
+	str += ";"
+	return str, nil
+}
+
+// getDelete returns a SQL DELETE statement that represents the Lookup data
+func getDelete(h Handler, q *query.Query) (string, error) {
+	str := "DELETE FROM " + h.tableName + " WHERE "
+	qry, err := getQuery(q)
+	if err != nil {
+		return "", err
+	}
+	str += qry + ";"
+	return str, nil
+}
+
 // newItemList creates a list of resource.Item from a SQL result row slice
 func newItemList(rows []map[string]interface{}, offset int) (*resource.ItemList, error) {
 
@@ -338,7 +387,7 @@ func newItemList(rows []map[string]interface{}, offset int) (*resource.ItemList,
 
 // newItem creates resource.Item from a SQL result row
 func newItem(row map[string]interface{}) (*resource.Item, error) {
-	// Add the id back (we use the same map hoping the mongoItem won't be stored back)
+	// Add the id back (we use the same map hoping the sqlItem won't be stored back)
 	id := row["id"]
 	etag := row["etag"]
 	delete(row, "etag")
