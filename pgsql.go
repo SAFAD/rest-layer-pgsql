@@ -151,30 +151,30 @@ func (h *Handler) Insert(ctx context.Context, items []*resource.Item) error {
 func (h *Handler) Update(ctx context.Context, item *resource.Item, original *resource.Item) error {
 
 	// begin a database transaction
-	txPtr, err := h.session.Begin()
+	transactionPtr, err := h.session.Begin()
 	if err != nil {
 		return err
 	}
 
 	err = compareEtags(h, original.ID, original.ETag)
 	if err != nil {
-		txPtr.Rollback()
+		transactionPtr.Rollback()
 		return err
 	}
 
 	s, err := getUpdate(h, item, original)
 	if err != nil {
-		txPtr.Rollback()
+		transactionPtr.Rollback()
 		return err
 	}
 	_, err = h.session.Exec(s)
 	if err != nil {
-		txPtr.Rollback()
+		transactionPtr.Rollback()
 		return err
 	}
 
 	// update succeeded, commit the transaction.
-	txPtr.Commit()
+	transactionPtr.Commit()
 	return nil
 }
 
@@ -308,41 +308,37 @@ func insertItems(h *Handler, items []*sqlItem) error {
 	return nil
 }
 
-// getUpdate returns a SQL INSERT statement constructed from the Item data
+// getUpdate returns a SQL UPDATE statement constructed from the Item data
 func getUpdate(h *Handler, i *resource.Item, o *resource.Item) (string, error) {
-	var id string
-	var err error
+	var statement bytes.Buffer
+	var where bytes.Buffer
 
-	id, err = valueToString(o.ID)
+	ID, err := valueToString(o.ID)
 	if err != nil {
 		return "", resource.ErrNotImplemented
 	}
 
-	a := fmt.Sprintf("UPDATE %s SET etag=%s,", h.tableName, "'"+i.ETag+"'")
-	z := fmt.Sprintf("WHERE id=%s AND etag=%s;", id, "'"+o.ETag+"'")
-	for k, v := range i.Payload {
-		if k != "id" {
-			var val string
-			val, err = valueToString(v)
+	// third we prepare the statement
+	statement.WriteString("UPDATE " + h.tableName + " SET etag='" + i.ETag + "', ")
+	where.WriteString("WHERE id=" + ID + " AND etag='" + o.ETag + "';")
+
+	for key, value := range i.Payload {
+		if key != "id" {
+			valueString, err := valueToString(value)
 			if err != nil {
 				return "", resource.ErrNotImplemented
 			}
-			//another cheap hack of the cheapest hacks ever hacked in the history of cheapness
-			//but seriously why is time.Time type returns this incompatible format?
-			//example: 2018-02-27 23:07:44.4179416 +0100 CET m=+7.679574500
-			//the m=+7.679574500 appears from nowhere and is unparsable or formattable
-			//TODO: FIXME!
-			if k == "updated" {
-				val = "'" + time.Now().Format(time.RFC3339) + "'"
-			}
-			a += fmt.Sprintf("%s=%s,", k, val)
+			statement.WriteString("" + key + "=" + valueString + ", ")
 		}
-
 	}
 	// remove trailing comma
-	a = a[:len(a)-1]
+	wString := statement.String()
+	wString = wString[:len(wString)-2]
 
-	result := fmt.Sprintf("%s %s", a, z)
+	statement.WriteString(wString)
+	statement.WriteString(where.String())
+
+	result := statement.String()
 	return result, nil
 }
 
