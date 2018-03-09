@@ -191,32 +191,31 @@ func (h *Handler) Update(ctx context.Context, item *resource.Item, original *res
 func (h *Handler) Delete(ctx context.Context, item *resource.Item) error {
 
 	// begin a transaction
-	txPtr, err := h.session.Begin()
+	transactionPtr, err := h.session.Begin()
 	if err != nil {
 		return err
 	}
 
 	err = compareEtags(h, item.ID, item.ETag)
 	if err != nil {
-		txPtr.Rollback()
+		transactionPtr.Rollback()
 		return err
 	}
 
 	// prepare and execute the delete statement, then finish the transaction
-	s := fmt.Sprintf("DELETE FROM %s WHERE id = '%s'", h.tableName, item.ID)
-	stmt, err := h.session.Prepare(s)
+	statement, err := h.session.Prepare("DELETE FROM $1 WHERE id = '$2'")
 	if err != nil {
-		txPtr.Rollback()
+		transactionPtr.Rollback()
 		return err
 	}
 
-	_, err = stmt.Exec()
+	_, err = statement.Exec(h.tableName, item.ID)
 	if err != nil {
-		txPtr.Rollback()
+		transactionPtr.Rollback()
 		return err
 	}
 
-	txPtr.Commit()
+	transactionPtr.Commit()
 	return nil
 }
 
