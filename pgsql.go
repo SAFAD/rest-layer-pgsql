@@ -203,7 +203,7 @@ func (h *Handler) Delete(ctx context.Context, item *resource.Item) error {
 	}
 
 	// prepare and execute the delete statement, then finish the transaction
-	statement, err := h.session.Prepare("DELETE FROM $1 WHERE id = '$2'")
+	statement, err := transactionPtr.Prepare("DELETE FROM $1 WHERE id = '$2'")
 	if err != nil {
 		transactionPtr.Rollback()
 		return err
