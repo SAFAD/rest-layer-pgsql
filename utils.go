@@ -80,9 +80,9 @@ func translatePredicate(p query.Predicate) (string, error) {
 			case string:
 				v = strings.Replace(v, "*", "%", -1)
 				v = strings.Replace(v, "_", "\\_", -1)
-				str += t.Field + " LIKE " + v + " ESCAPE '\\'"
+				str += t.Field + " LIKE " + v + " UESCAPE '\\'"
 			default:
-				str += t.Field + " IS " + v
+				str += t.Field + "=" + v
 			}
 		case query.NotEqual:
 			v, err := valueToString(t.Value)
@@ -93,9 +93,9 @@ func translatePredicate(p query.Predicate) (string, error) {
 			case string:
 				v = strings.Replace(v, "*", "%", -1)
 				v = strings.Replace(v, "_", "\\_", -1)
-				str += t.Field + " NOT LIKE " + v + " ESCAPE '\\'"
+				str += t.Field + " NOT LIKE " + v + " UESCAPE '\\'"
 			default:
-				str += t.Field + " IS NOT " + v
+				str += t.Field + " != " + v
 			}
 		case query.GreaterThan:
 			v, err := valueToString(t.Value)

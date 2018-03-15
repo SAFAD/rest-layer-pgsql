@@ -359,6 +359,7 @@ func getSelect(h Handler, q *query.Query) (string, error) {
 		str += fmt.Sprintf(" OFFSET %d", q.Window.Offset)
 	}
 	str += ";"
+	fmt.Println(str)
 	return str, nil
 }
 
